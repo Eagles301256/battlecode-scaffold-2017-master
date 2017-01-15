@@ -26,6 +26,7 @@ public strictfp class RobotPlayer {
     public static TreeInfo[] treesNearMe;
     public static Direction dir;
     public static float distanceToGardener = 0;
+    public static MapLocation initialArchonStartLocation;
     //public static boolean builtTree = false;
 
 
@@ -91,6 +92,7 @@ public strictfp class RobotPlayer {
                 if (rc.canHireGardener(dir) && firstTurn == 0){
                     rc.hireGardener(dir);
                     countGardener++;
+                    initialArchonStartLocation = rc.getLocation().add(dir);
                     tryMove(move);
                     firstTurn++;
                 }
