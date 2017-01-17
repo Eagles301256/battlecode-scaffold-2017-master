@@ -1,5 +1,6 @@
-package NRUrefbot;
-import battlecode.common.*;
+
+        package NRUrefbot;
+        import battlecode.common.*;
 
 
 public strictfp class RobotPlayer {
@@ -8,7 +9,7 @@ public strictfp class RobotPlayer {
     /**
      * run() is the method that is called when a robot is instantiated in the Battlecode world.
      * If this method returns, the robot dies!
-    **/
+     **/
     @SuppressWarnings("unused")
 
     public static float PI = (float)Math.PI;
@@ -49,6 +50,12 @@ public strictfp class RobotPlayer {
     public static float treeLocationY = 0;
     public static boolean canBuildAllTrees;
     public static int searchedForTrees = 0;
+    public static MapLocation myEdgeFacingPlantLocation;
+    public static float distanceToPlantLocation;
+    public static Direction directionToPlantLocation;
+    public static int currentGardenerID = 0;
+    public static int stuckTime = 0;
+    public static int unstuckTime = 0;
     //public static boolean builtTree = false;
 
 
@@ -76,7 +83,7 @@ public strictfp class RobotPlayer {
                 runLumberjack();
                 break;
         }
-	}
+    }
 
     static void runArchon() throws GameActionException {
         System.out.println("I'm an archon!");
@@ -103,6 +110,7 @@ public strictfp class RobotPlayer {
                 // Move randomly
 
                 if (firstTurn != 0) {
+
                     robotsNearMe = rc.senseNearbyRobots();
                     robotCount = robotsNearMe.length;
                     distanceToInitialGardener = getDistanceToInitialGardener();
@@ -115,24 +123,24 @@ public strictfp class RobotPlayer {
                 //System.out.println("Distance to nearest robot: " + ((robotsNearMe[0].getLocation()).distanceTo(rc.getLocation().add(dir))));
                 //float nearestRobotDistance = nearestRobotLocation.distanceTo(rc.getLocation());
 
-                if (firstTurn == 0){
+//TODO FIRST ARCHON TURN
 
+                if (firstTurn == 0){
                     myTeam = rc.getTeam();
                     enemyTeam = myTeam.opponent();
                     robotsNearMe = rc.senseNearbyRobots();
                     spaceAvailable = howMuchSpace();
                     System.out.println("Space available: " + spaceAvailable + "\r\n");
+
                     if (spaceAvailable >= 9){
                         archonBehavior = 1;
                         rc.broadcast(1, 000);
                         canBuildAllTrees = findSpaceFreeForTrees(rc.getLocation().add(dir));
                         if (canBuildAllTrees){
                             System.out.println("I can build all the trees!" + "\r\n");
-                            if (buildGardenerHere.distanceTo(rc.getLocation()) <= 1){
-                                System.out.println("I can build a gardener here!" + "\r\n");
-                                dir = rc.getLocation().directionTo(buildGardenerHere);
+                            if (atPlantLocation() && rc.canHireGardener(dir)){
                                 rc.hireGardener(dir);
-                                System.out.println("I built a gardener!" + "\r\n");
+                                System.out.println("I built a gardener at: " + rc.getLocation().add(dir, 3) + "\r\n");
                                 countGardener++;
                                 robotsNearMe = rc.senseNearbyRobots();
                                 initialGardenerStartLocation = robotsNearMe[0].getLocation();
@@ -141,12 +149,27 @@ public strictfp class RobotPlayer {
                                 rc.broadcast(firstGardenerID, 000);
                                 lastArchonBuildLocation = initialGardenerStartLocation;
                             }
-                            else {
-                                System.out.println("I need to get to a different spot!" + "\r\n");
-                                dir = rc.getLocation().directionTo(buildGardenerHere);
-                                tryMove(dir);
+                            else if (atPlantLocation()){
+                                Clock.yield();
                             }
-
+//                            if (buildGardenerHere.distanceTo(rc.getLocation()) < 3.01){
+//                                System.out.println("I can build a gardener here!" + buildGardenerHere + "\r\n");
+//                                dir = rc.getLocation().directionTo(buildGardenerHere);
+//                                rc.hireGardener(dir);
+//                                System.out.println("I built a gardener at: " + rc.getLocation().add(dir, 3) + "\r\n");
+//                                countGardener++;
+//                                robotsNearMe = rc.senseNearbyRobots();
+//                                initialGardenerStartLocation = robotsNearMe[0].getLocation();
+//                                firstGardenerID = robotsNearMe[0].getID()/100;
+//                                System.out.println("First gardener ID: " + firstGardenerID + "\r\n");
+//                                rc.broadcast(firstGardenerID, 000);
+//                                lastArchonBuildLocation = initialGardenerStartLocation;
+//                            }
+//                            else {
+//                                System.out.println("I need to get to a different spot!" + "\r\n");
+//                                dir = rc.getLocation().directionTo(buildGardenerHere);
+//                                tryMove(dir);
+//                            }
                         }
                         else {
                             System.out.println("I can't build all the trees but there is space to do it!" + "\r\n");
@@ -154,91 +177,134 @@ public strictfp class RobotPlayer {
                             tryMove(dir);
                         }
                     }
-
                     else if (spaceAvailable < 9){
                         archonBehavior = 0;
                         rc.broadcast(1, 001);
                         broadcastTreeLocations();
-                        rc.hireGardener(dir);
-                        System.out.println("I built a gardener!" + "\r\n");
-                        countGardener++;
-                        robotsNearMe = rc.senseNearbyRobots();
-                        initialGardenerStartLocation = robotsNearMe[0].getLocation();
-                        firstGardenerID = robotsNearMe[0].getID()/100;
-                        System.out.println("First gardener ID: " + firstGardenerID);
-                        rc.broadcast(firstGardenerID, 001);
-                        lastArchonBuildLocation = initialGardenerStartLocation;
-                        distanceToEnemy = howFartoEnemy();
-                        System.out.println("Distance to enemy: " + distanceToEnemy);
-                        tryMove(move);
-
-                    }
-
-
-                    firstTurn++;
-                    //System.out.println("All this code is good!\r\n");
-                }
-
-                else if (rc.canHireGardener(dir) && countGardener < 4 && distanceToNearestGardener >= 6.5 && firstTurn != 0 && archonBehavior == 1) {
-                    canBuildAllTrees = findSpaceFreeForTrees(lastArchonBuildLocation.add(Direction.getEast(), 4));
-                    rc.hireGardener(dir);
-                    System.out.println("I built a gardener!" + "\r\n");
-                    countGardener++;
-                    robotsNearMe = rc.senseNearbyRobots();
-                    lastArchonBuildLocation = robotsNearMe[0].getLocation();
-                    whereToMove(lastArchonBuildLocation, getDirectionArchonPoints());
-                    tryMove(move);
-                    }
-                else if (distanceToNearestGardener <= 6.5 && firstTurn != 0 && countGardener < 4 && archonBehavior == 1){
-                    canBuildAllTrees = findSpaceFreeForTrees(lastArchonBuildLocation.add(Direction.getEast(), 4));
-                    if (canBuildAllTrees){
-                        System.out.println("I can build all the trees!" + "\r\n");
-                        if (buildGardenerHere.distanceTo(rc.getLocation()) <= 1){
-                            System.out.println("I can build a gardener here!" + "\r\n");
-                            dir = rc.getLocation().directionTo(buildGardenerHere);
-                            if (rc.canHireGardener(dir)){
+                        canBuildAllTrees = findSpaceFreeForTrees(rc.getLocation().add(dir));
+                        if (canBuildAllTrees){
+                            System.out.println("I can build all the trees!" + "\r\n");
+                            atPlantLocation();
+                            if (buildGardenerHere.distanceTo(rc.getLocation()) <= 1){
+                                System.out.println("I can build a gardener here!" + buildGardenerHere + "\r\n");
+                                dir = rc.getLocation().directionTo(buildGardenerHere);
                                 rc.hireGardener(dir);
-                                System.out.println("I built a gardener!" + "\r\n");
+                                System.out.println("I built a gardener at: " + rc.getLocation().add(dir, 3) + "\r\n");
                                 countGardener++;
                                 robotsNearMe = rc.senseNearbyRobots();
                                 initialGardenerStartLocation = robotsNearMe[0].getLocation();
                                 firstGardenerID = robotsNearMe[0].getID()/100;
                                 System.out.println("First gardener ID: " + firstGardenerID + "\r\n");
-                                rc.broadcast(firstGardenerID, 000);
+                                rc.broadcast(firstGardenerID, 001);
                                 lastArchonBuildLocation = initialGardenerStartLocation;
+                            }
+                            else {
+                                System.out.println("I need to get to a different spot!" + "\r\n");
+                                dir = rc.getLocation().directionTo(buildGardenerHere);
+                                tryMove(dir);
+                            }
+                        }
+                        distanceToEnemy = howFartoEnemy();
+                        System.out.println("Distance to enemy: " + distanceToEnemy);
+                    }
+                    firstTurn++;
+                }
+
+//TODO NORMAL ARCHON TURN
+                
+                //TODO findSpaceFreeForTrees is not working after many turns
+
+                else if (firstTurn != 0 && countGardener < 4 && /*distanceToNearestGardener >= 6.5 &&*/  archonBehavior == 1) {
+                    canBuildAllTrees = findSpaceFreeForTrees(lastArchonBuildLocation.add(randomDirection(), 4));
+                    if (canBuildAllTrees){
+                        System.out.println("I can build all the trees!" + "\r\n");
+                        if (atPlantLocation()){
+                            if (rc.canHireGardener(dir)){
+                                System.out.println("I can build a gardener here!" + buildGardenerHere + "\r\n");
+                                rc.hireGardener(dir);
+                                System.out.println("I built a gardener at: " + rc.getLocation().add(dir, 3) + "\r\n");
+                                countGardener++;
+                                robotsNearMe = rc.senseNearbyRobots();
+                                lastArchonBuildLocation = robotsNearMe[0].getLocation();
+                                currentGardenerID = robotsNearMe[0].getID()/100;
+                                System.out.println("First gardener ID: " + currentGardenerID + "\r\n");
+                                rc.broadcast(currentGardenerID, 000);
                             }
                             else {
                                 Clock.yield();
                             }
-
                         }
                         else {
                             System.out.println("I need to get to a different spot!" + "\r\n");
-                            dir = rc.getLocation().directionTo(buildGardenerHere);
                             tryMove(dir);
                         }
 
                     }
-                    //whereToMove(lastArchonBuildLocation, getDirectionArchonPoints());
-                    //tryMove(move);
-                    //System.out.println("I'm not getting to that!");
-                }
-                else if (distanceToNearestGardener <= 6 && countGardener >= 4 && firstTurn != 0 && archonBehavior == 1){
-                    whereToMove(lastArchonBuildLocation, getDirectionArchonPoints());
-                    tryMove(move);
-                    System.out.println("I'm doing this!");
-                }
+                    else if (stuckTime < 20){
+                        System.out.println("Can't find space for trees!" + "\r\n");
+                        tryMove(dir);
+                        stuckTime++;
+                        Clock.yield();
+                    }
+                    else if (stuckTime >= 20){
+                        tryMove(Direction.getNorth());
+                        System.out.println("I'm stuck!" + "\r\n");
+                        unstuckTime++;
+                        if (unstuckTime >= 20){
+                            stuckTime = 0;
+                        }
+                        Clock.yield();
+                    }
 
-                else if (rc.canHireGardener(dir) && archonBehavior == 0){
-                    rc.hireGardener(dir);
-                    System.out.println("I built a gardener!" + "\r\n");
-                    countGardener++;
-                    tryMove(move);
                 }
-
-                else if (archonBehavior == 0){
-                    tryMove(move);
-                }
+//                else if (firstTurn != 0 && /*distanceToNearestGardener <= 6.5 &&*/  countGardener < 4 && archonBehavior == 1){
+//                    canBuildAllTrees = findSpaceFreeForTrees(lastArchonBuildLocation.add(Direction.getEast(), 4));
+//                    if (canBuildAllTrees){
+//                        System.out.println("I can build all the trees!" + "\r\n");
+//                        if (buildGardenerHere.distanceTo(rc.getLocation()) <= 1){
+//                            System.out.println("I can build a gardener here!" + "\r\n");
+//                            dir = rc.getLocation().directionTo(buildGardenerHere);
+//                            if (rc.canHireGardener(dir)){
+//                                rc.hireGardener(dir);
+//                                System.out.println("I built a gardener!" + "\r\n");
+//                                countGardener++;
+//                                robotsNearMe = rc.senseNearbyRobots();
+//                                initialGardenerStartLocation = robotsNearMe[0].getLocation();
+//                                firstGardenerID = robotsNearMe[0].getID()/100;
+//                                System.out.println("First gardener ID: " + firstGardenerID + "\r\n");
+//                                rc.broadcast(firstGardenerID, 000);
+//                                lastArchonBuildLocation = initialGardenerStartLocation;
+//                            }
+//                            else {
+//                                Clock.yield();
+//                            }
+//
+//                        }
+//                        else {
+//                            System.out.println("I need to get to a different spot!" + "\r\n");
+//                            dir = rc.getLocation().directionTo(buildGardenerHere);
+//                            tryMove(dir);
+//                        }
+//
+//                    }
+//
+//                }
+//                else if (distanceToNearestGardener <= 6 && countGardener >= 4 && firstTurn != 0 && archonBehavior == 1){
+//                    whereToMove(lastArchonBuildLocation, getDirectionArchonPoints());
+//                    tryMove(move);
+//                    System.out.println("I'm doing this!");
+//                }
+//
+//                else if (rc.canHireGardener(dir) && archonBehavior == 0){
+//                    rc.hireGardener(dir);
+//                    System.out.println("I built a gardener!" + "\r\n");
+//                    countGardener++;
+//                    tryMove(move);
+//                }
+//
+//                else if (archonBehavior == 0){
+//                    tryMove(move);
+//                }
 
 
 //                for (int i = 0; i --> 0; i++) {
@@ -285,6 +351,47 @@ public strictfp class RobotPlayer {
         }
     }
 
+    public static boolean atPlantLocation(){
+        myEdgeFacingPlantLocation = rc.getLocation().add(rc.getLocation().directionTo(buildGardenerHere), 2);
+        distanceToPlantLocation = buildGardenerHere.distanceTo(myEdgeFacingPlantLocation);
+        directionToPlantLocation = new Direction(myEdgeFacingPlantLocation, buildGardenerHere);
+        System.out.println("My edge pointing at the Plant Location: " + myEdgeFacingPlantLocation + "\r\n");
+        System.out.println("Distance from my edge to Plant Location: " + distanceToPlantLocation + "\r\n");
+        dir = directionToPlantLocation;
+        if (distanceToPlantLocation > 1.1){
+            return false;
+        }
+        else if (distanceToPlantLocation <= 1.1 && outsideMyRadius(rc.getLocation(), buildGardenerHere)){
+            System.out.println("No need to flip direction!" + "\r\n");
+            return true;
+        }
+        else if (distanceToPlantLocation <= 1.1 && !outsideMyRadius(rc.getLocation(), buildGardenerHere)){
+            System.out.println("Direction must be flipped!" + "\r\n");
+            dir = directionToPlantLocation.opposite();
+            return true;
+        }
+        return false;
+    }
+
+    public static boolean outsideMyRadius(MapLocation myCenter, MapLocation buildSite){
+        float a = myCenter.distanceTo(buildSite);
+        if (a > 2){
+            return true;
+        }
+        else {
+            return false;
+        }
+    }
+
+    public static boolean outsideAnotherGarden(MapLocation buildSite, RobotInfo[] robotLocations){
+        for (int i = robotLocations.length; i --> 0;){
+            if (robotLocations[i].getLocation().distanceTo(buildSite) < 4){
+                return false;
+            }
+        }
+        return true;
+    }
+
     public static void closestGardener() {
         for (int i = robotCount; i-- > 0; ) {
             if (robotsNearMe[i].getType() == RobotType.GARDENER) {
@@ -297,16 +404,8 @@ public strictfp class RobotPlayer {
                     distanceToNearestGardener = a;
                     System.out.println("Distance to nearest gardener: " + a);
                 }
-
-                //distanceToInitialGardener = initialGardenerStartLocation.distanceTo(rc.getLocation().add(dir));
-                //whereToMove(lastArchonBuildLocation, rc.getLocation().add(dir));
-
-
             }
-
-
         }
-
     }
 
     private static float getDistanceToGardener(int x){
@@ -378,16 +477,8 @@ public strictfp class RobotPlayer {
             }
 
 
-                }
-            }
-
-
-
-            //System.out.println("Integer of MapLocation: " + b + "\r\n");
-
-
-
-
+        }
+    }
 
     private static float howFartoEnemy() {
         initialEnemyArchonLocation = rc.getInitialArchonLocations(enemyTeam);
@@ -422,19 +513,19 @@ public strictfp class RobotPlayer {
         int spaceCheck = 0;
         searchedForTrees++;
         Direction directionToFace = Direction.getNorth();
-        System.out.println("Something is wrong!" + "\r\n");
-        while(rc.canSenseAllOfCircle(thisLocation, 2) && spaceCheck < 10){
+        while(rc.canSenseAllOfCircle(thisLocation, 3) && spaceCheck < 10){
             try {
+                boolean a;
                 boolean b;
                 boolean c;
-                b = rc.isCircleOccupiedExceptByThisRobot(thisLocation, 2);
-                c = rc.onTheMap(thisLocation, 3);
-                if (!b && c){
+                a = rc.isCircleOccupiedExceptByThisRobot(thisLocation, 2);
+                b = rc.onTheMap(thisLocation, 3);
+                c = outsideAnotherGarden(thisLocation, robotsNearMe);
+                if (!a && b && c){
                     buildGardenerHere = thisLocation;
-                    System.out.println("YOU SUCK AT CODE!" + "\r\n");
+                    System.out.println("You can build a gardener at: " + buildGardenerHere + "\r\n");
                     return true;
                 }
-
                 else {
                     directionToFace = directionToFace.rotateLeftDegrees((float)Math.ceil(Math.random() * 1000));
                     System.out.println("Rotating Left: " + directionToFace + "\r\n");
@@ -448,13 +539,17 @@ public strictfp class RobotPlayer {
                 e.printStackTrace();
             }
         }
-        return false;
+
+            System.out.println("Find Space returned false! Spacecheck was: " + spaceCheck + "\r\n");
+            return false;
+
+
     }
 
 
 
 
-	static void runGardener() throws GameActionException {
+    static void runGardener() throws GameActionException {
         System.out.println("I'm a gardener!");
 
 
