@@ -23,6 +23,7 @@ public strictfp class RobotPlayer {
     public static int robotCount = 0;
     //public static float my_direction = (PI/2);
     public static RobotInfo[] robotsNearMe;
+    public static RobotInfo[] enemyRobotsNearMe;
     public static TreeInfo[] treesNearMe;
     public static TreeInfo[] myTrees;
     public static Team myTeam;
@@ -69,6 +70,14 @@ public strictfp class RobotPlayer {
     public static boolean noMoveLocation = false;
     public static int searchCooldown = 5;
     public static int gardenersNearMeCount = 0;
+    public static int archonFrustrationLevel = 0;
+    private static final int GARDENER_ORDERS_CHANNEL = 4;
+    private static final int GARDENER_BROADCAST_CHANNEL = 5;
+    public static int gardenerBehavior = 0;
+    public static int currentSoldierID = 0;
+    public static MapLocation soldierStartLocation;
+    public static int lumberjackCount = 0;
+    public static int howManyLumberjacksWeWant = 0;
     //public static boolean builtTree = false;
 
 
@@ -133,7 +142,6 @@ public strictfp class RobotPlayer {
                         }
                     }
                     robotCount = robotsNearMe.length;
-                    distanceToInitialGardener = getDistanceToInitialGardener();
                     closestGardener();
                 }
 
@@ -149,12 +157,16 @@ public strictfp class RobotPlayer {
                 if (firstTurn == 0){
                     myTeam = rc.getTeam();
                     enemyTeam = myTeam.opponent();
+                    distanceToEnemy = howFartoEnemy();
+                    System.out.println("Distance to enemy: " + distanceToEnemy);
                     robotsNearMe = rc.senseNearbyRobots();
                     spaceAvailable = howMuchSpace();
                     System.out.println("Space available: " + spaceAvailable + "\r\n");
 
                     if (spaceAvailable >= 9){
                         archonBehavior = 1;
+                        howManyLumberjacksWeWant = 5;
+                        rc.broadcast(GARDENER_ORDERS_CHANNEL, howManyLumberjacksWeWant);
                         rc.broadcast(1, 001);
                         canBuildAllTrees = findSpaceFreeForTrees(rc.getLocation().add(randomDirection()));
                         if (canBuildAllTrees){
@@ -167,12 +179,10 @@ public strictfp class RobotPlayer {
                                 robotJustBuilt = rc.senseRobotAtLocation(rc.getLocation().add(dir, 3));
                                 int t = robotJustBuilt.getID()/100;
                                 int r = robotJustBuilt.getID() % 100;
-                                initialGardenerStartLocation = robotJustBuilt.getLocation();
                                 firstGardenerID = t + r;
                                 System.out.println("First gardener ID: " + firstGardenerID + "\r\n");
                                 rc.broadcast(firstGardenerID, 001);
                                 System.out.println("I broadcasted this gardener: " + firstGardenerID + " orders: 001\r\n");
-                                lastArchonBuildLocation = initialGardenerStartLocation;
                             }
                             else if (atPlantLocation()){
                                 firstTurn++;
@@ -186,31 +196,34 @@ public strictfp class RobotPlayer {
                             firstTurn++;
                         }
                     }
-                    else if (spaceAvailable < 9){
-                        archonBehavior = 2;
-                        rc.broadcast(1, 002);
-                        dir = findBuildSpace(2.01);
+                    else if (spaceAvailable > 0 && distanceToEnemy < 40){
+                        archonBehavior = 4;
+                        rc.broadcast(1, 004);
+                        dir = findBuildSpace(1.01);
+                        howManyLumberjacksWeWant = 0;
+                        rc.broadcast(GARDENER_ORDERS_CHANNEL, howManyLumberjacksWeWant);
                         if (rc.canHireGardener(dir)){
-                            rc.hireGardener(dir);
-                            System.out.println("I built a gardener at: " + rc.getLocation().add(dir, 3) + "\r\n");
-                            countGardener++;
-                            robotsNearMe = rc.senseNearbyRobots();
-                            robotJustBuilt = rc.senseRobotAtLocation(rc.getLocation().add(dir, 3));
-                            int t = robotJustBuilt.getID()/100;
-                            int r = robotJustBuilt.getID() % 100;
-                            initialGardenerStartLocation = robotJustBuilt.getLocation();
-                            firstGardenerID = t + r;
-                            System.out.println("First gardener ID: " + firstGardenerID + "\r\n");
-                            rc.broadcast(firstGardenerID, 002);
-                            System.out.println("I broadcasted this gardener: " + firstGardenerID + " orders: 002\r\n");
-                            lastArchonBuildLocation = initialGardenerStartLocation;
+                            buildGardener(dir, 004);
+                            firstTurn++;
                         }
 
                         else {
-                            distanceToEnemy = howFartoEnemy();
-                            System.out.println("Distance to enemy: " + distanceToEnemy);
+                            //distanceToEnemy = howFartoEnemy();
+                            //System.out.println("Distance to enemy: " + distanceToEnemy);
                             firstTurn++;
                         }
+                    }
+                    else if (spaceAvailable == 0 && distanceToEnemy < 40){
+                        archonBehavior = 4;
+                        rc.broadcast(1, 004);
+                        dir = findBuildSpace(1.01);
+                        howManyLumberjacksWeWant = 0;
+                        rc.broadcast(GARDENER_ORDERS_CHANNEL, howManyLumberjacksWeWant);
+                        if (rc.canHireGardener(dir)){
+                            buildGardener(dir, 004);
+                            firstTurn++;
+                        }
+
                     }
 
                 }
@@ -220,33 +233,30 @@ public strictfp class RobotPlayer {
                 else if (firstTurn != 0  && gardenersNearMeCount < 3) {
                     if (!noMoveLocation && searchedForTrees < 5) {
                         canBuildAllTrees = findSpaceFreeForTrees(rc.getLocation().add(randomDirection(), (float) (Math.random() * 7)));
-                        if (canBuildAllTrees) {
+                        if (canBuildAllTrees && spaceAvailable < 9) {
                             System.out.println("I can build all the trees!" + "\r\n");
-                            if (atPlantLocation()) {
-                                if (rc.canHireGardener(dir)) {
-                                    System.out.println("I can build a gardener here!" + buildGardenerHere + "\r\n");
-                                    rc.hireGardener(dir);
-                                    System.out.println("I built a gardener at: " + rc.getLocation().add(dir, 3) + "\r\n");
-                                    countGardener++;
-                                    robotsNearMe = rc.senseNearbyRobots();
-                                    robotJustBuilt = rc.senseRobotAtLocation(rc.getLocation().add(dir, 3));
-                                    int t = robotJustBuilt.getID() / 100;
-                                    int r = robotJustBuilt.getID() % 100;
-                                    lastArchonBuildLocation = robotJustBuilt.getLocation();
-                                    currentGardenerID = t + r;
-                                    System.out.println("Current gardener ID: " + currentGardenerID + "\r\n");
-                                    if (archonBehavior == 1) {
-                                        rc.broadcast(currentGardenerID, 001);
-                                        System.out.println("I broadcasted this gardener: " + currentGardenerID + " orders: 001\r\n");
-                                    }
-                                    if (archonBehavior == 2) {
-                                        rc.broadcast(currentGardenerID, 002);
-                                        System.out.println("I broadcasted this gardener: " + currentGardenerID + " orders: 002\r\n");
-                                    }
-                                } else if (atPlantLocation()) {
-                                    System.out.println("Will wait here till I can plant!" + "\r\n");
-                                    archonWaitingToPlant = 1;
-                                }
+                            if (atPlantLocation() && rc.canHireGardener(dir)) {
+                                buildGardener(dir, 003);
+                            } else if (atPlantLocation()) {
+                                System.out.println("Will wait here till I can plant!" + "\r\n");
+                                archonWaitingToPlant = 1;
+                                noMoveLocation = true;
+                            } else {
+                                System.out.println("I need to get to the plant spot!" + "\r\n");
+                                move = rc.getLocation().directionTo(buildGardenerHere);
+                                tryMove(move);
+                                noMoveLocation = true;
+                                archonWaitingToPlant = 1;
+                            }
+                        }
+                        if (canBuildAllTrees && spaceAvailable >= 9) {
+                            System.out.println("I can build all the trees!" + "\r\n");
+                            if (atPlantLocation() && rc.canHireGardener(dir)) {
+                                buildGardener(dir, 002);
+                            } else if (atPlantLocation()) {
+                                System.out.println("Will wait here till I can plant!" + "\r\n");
+                                archonWaitingToPlant = 1;
+                                noMoveLocation = true;
                             } else {
                                 System.out.println("I need to get to the plant spot!" + "\r\n");
                                 move = rc.getLocation().directionTo(buildGardenerHere);
@@ -259,6 +269,7 @@ public strictfp class RobotPlayer {
                         System.out.println("No luck here! Moving elsewhere!" + "\r\n");
                         tryMove(randomDirection());
                         searchCooldown++;
+                        archonFrustrationLevel++;
                     } else if (!noMoveLocation && searchedForTrees >= 5 && searchCooldown > 0) {
                         System.out.println("No luck here! Moving elsewhere!" + "\r\n");
                         System.out.println("Search cooldown: " + searchCooldown + "\r\n");
@@ -270,28 +281,13 @@ public strictfp class RobotPlayer {
                         move = rc.getLocation().directionTo(buildGardenerHere);
                         tryMove(move);
                         System.out.println("Distance to go: " + rc.getLocation().add(move, 2).distanceTo(buildGardenerHere) + "\r\n");
-                    } else if (rc.canHireGardener(rc.getLocation().directionTo(buildGardenerHere)) && archonWaitingToPlant == 1 && atPlantLocation()) {
-                        rc.hireGardener(dir);
-                        System.out.println("I built a gardener at: " + rc.getLocation().add(dir, 3) + "\r\n");
-                        countGardener++;
-                        robotsNearMe = rc.senseNearbyRobots();
-                        robotJustBuilt = rc.senseRobotAtLocation(rc.getLocation().add(dir, 3));
-                        int t = robotJustBuilt.getID() / 100;
-                        int r = robotJustBuilt.getID() % 100;
-                        lastArchonBuildLocation = robotJustBuilt.getLocation();
-                        currentGardenerID = t + r;
-                        System.out.println("Current gardener ID: " + currentGardenerID + "\r\n");
-                        if (archonBehavior == 1) {
-                            rc.broadcast(currentGardenerID, 001);
-                            System.out.println("I broadcasted this gardener: " + currentGardenerID + " orders: 001\r\n");
-                        }
-                        if (archonBehavior == 2) {
-                            rc.broadcast(currentGardenerID, 002);
-                            System.out.println("I broadcasted this gardener: " + currentGardenerID + " orders: 002\r\n");
-                        }
+                    } else if (noMoveLocation && rc.canHireGardener(dir) && archonWaitingToPlant == 1 && atPlantLocation()) {
+                        buildGardener(dir, 002);
                         archonWaitingToPlant = 0;
                         noMoveLocation = false;
-                        System.out.println("What the heck!" + "\r\n");
+                        System.out.println("This worked!" + "\r\n");
+                    } else if (noMoveLocation && archonWaitingToPlant == 1 && atPlantLocation()) {
+                        System.out.println("Will wait here till I can plant!" + "\r\n");
                     } else if (stuckTime < 20) {
                         System.out.println("Can't find space for trees!" + "\r\n");
                         tryMove(randomDirection());
@@ -307,32 +303,53 @@ public strictfp class RobotPlayer {
                         }
                     }
                 }
-
-                //TODO Build
-
-                // Randomly attempt to build a gardener in this direction
-
-                //TODO Command and Control
-                //TODO yield
-
-                // Broadcast archon's location for other robots on the team to know ******EDITED OUT BY TAD ON 10 JAN******
-                //MapLocation myLocation = rc.getLocation();
-                //rc.broadcast(0,(int)myLocation.x);
-                //rc.broadcast(1,(int)myLocation.y);
-
-                // Clock.yield() makes the robot wait until the next turn, then it will perform this loop again
-                float teamBulletCount = rc.getTeamBullets();
-                if (teamBulletCount > 500){
-                    rc.donate(200);
+                else if (firstTurn != 0  && gardenersNearMeCount >= 3) {
+                    getAwayFromGardeners();
+                    tryMove(move);
                 }
 
-                Clock.yield();
+                    if (archonFrustrationLevel == 50) {
+                        //rc.broadcast(GARDENER_ORDERS_CHANNEL, 003);
+                    }
+
+                    float teamBulletCount = rc.getTeamBullets();
+                    if (teamBulletCount > 500) {
+                        rc.donate(200);
+                    }
+
+                    Clock.yield();
+
 
             } catch (Exception e) {
                 System.out.println("Archon Exception");
                 e.printStackTrace();
             }
         }
+    }
+
+    private static void buildGardener(Direction buildDir, int orders){
+        System.out.println("I can build a gardener here!" + buildGardenerHere + "\r\n");
+        while(true){
+            try{
+                rc.hireGardener(buildDir);
+                System.out.println("I built a gardener at: " + rc.getLocation().add(buildDir, 3) + "\r\n");
+                countGardener++;
+                robotsNearMe = rc.senseNearbyRobots();
+                robotJustBuilt = rc.senseRobotAtLocation(rc.getLocation().add(buildDir, 3));
+                int t = robotJustBuilt.getID() / 100;
+                int r = robotJustBuilt.getID() % 100;
+                lastArchonBuildLocation = robotJustBuilt.getLocation();
+                currentGardenerID = t + r;
+                System.out.println("Current gardener ID: " + currentGardenerID + "\r\n");
+                rc.broadcast(currentGardenerID, orders);
+                System.out.println("I broadcasted this gardener orders: " + archonBehavior + "\r\n");
+                break;
+            } catch (Exception e) {
+                System.out.println("Archon Exception");
+                e.printStackTrace();
+            }
+        }
+
     }
 
     public static boolean atPlantLocation(){
@@ -377,7 +394,8 @@ public strictfp class RobotPlayer {
     }
 
     public static void closestGardener() {
-        for (int i = robotCount; i-- > 0; ) {
+        robotsNearMe = rc.senseNearbyRobots();
+        for (int i = robotsNearMe.length; i-- > 0; ) {
             if (robotsNearMe[i].getType() == RobotType.GARDENER) {
                 float a = getDistanceToGardener(i);
                 float b = distanceToInitialGardener;
@@ -391,6 +409,59 @@ public strictfp class RobotPlayer {
             }
         }
     }
+
+    public static void getAwayFromGardeners() {
+        robotsNearMe = rc.senseNearbyRobots(10);
+        MapLocation z = initialEnemyArchonLocation[0];
+        MapLocation y = initialEnemyArchonLocation[0];
+        MapLocation x = initialEnemyArchonLocation[0];
+        float w = 10;
+        float v = 10;
+        float u = 10;
+        for (int i = robotsNearMe.length; i-- > 0; ) {
+            if (robotsNearMe[i].getType() == RobotType.GARDENER) {
+                System.out.println("Found a gardener at: " + robotsNearMe[i].getLocation() + "\r\n");
+                if (robotsNearMe[i].getLocation().distanceTo(rc.getLocation()) < w) {
+                    w = robotsNearMe[i].getLocation().distanceTo(rc.getLocation());
+                    z = robotsNearMe[i].getLocation();
+                }
+                if (robotsNearMe[i].getLocation().distanceTo(rc.getLocation()) < v) {
+                    w = v;
+                    v = robotsNearMe[i].getLocation().distanceTo(rc.getLocation());
+                    z = y;
+                    y = robotsNearMe[i].getLocation();
+                }
+                if (robotsNearMe[i].getLocation().distanceTo(rc.getLocation()) < u) {
+                    v = u;
+                    u = robotsNearMe[i].getLocation().distanceTo(rc.getLocation());
+                    y = x;
+                    x = robotsNearMe[i].getLocation();
+                }
+            }
+        }
+            System.out.println("Third closest gardener is at: " + z + " and at a distance of: " + w + " and an angle to: " + rc.getLocation().directionTo(z) +  "\r\n");
+            System.out.println("Second closest gardener is at: " + y + " and at a distance of: " + v + " and an angle to: " + rc.getLocation().directionTo(y) +  "\r\n");
+            System.out.println("Closest gardener is at: " + x + " and at a distance of: " + u + " and an angle to: " + rc.getLocation().directionTo(x) + "\r\n");
+
+        Float third = rc.getLocation().directionTo(z).opposite().radians;
+        Float second = rc.getLocation().directionTo(y).opposite().radians;
+        Float first = rc.getLocation().directionTo(x).opposite().radians;
+
+
+        float ye = ((float)((double)first*(1/u)) + (float)((double)second*(1/v)) + (float)((double)third*(1/w)))/3;
+        move = new Direction(ye);
+        while(true) {
+            try {
+                rc.setIndicatorLine(rc.getLocation(), rc.getLocation().add(ye, 5), 255, 0, 0);
+                break;
+            } catch (Exception e) {
+                System.out.println("Lumberjack Exception");
+                e.printStackTrace();
+            }
+        }
+
+        }
+
 
     private static float getDistanceToGardener(int x){
         return robotsNearMe[x].getLocation().distanceTo(getDirectionArchonPoints());
@@ -501,14 +572,16 @@ public strictfp class RobotPlayer {
         searchedForTrees++;
         Direction directionToFace;
         robotsNearMe = rc.senseNearbyRobots();
-        while(rc.canSenseAllOfCircle(thisLocation, 3) && spaceCheck < 10){
+        while(rc.canSenseAllOfCircle(thisLocation, 3) && spaceCheck < 30){
             try {
                 boolean a;
                 boolean b;
                 boolean c;
-                a = rc.isCircleOccupiedExceptByThisRobot(thisLocation, 2);
+                boolean d;
+                a = rc.isCircleOccupiedExceptByThisRobot(thisLocation, 3);
                 b = rc.onTheMap(thisLocation, 3);
                 c = outsideAnotherGarden(thisLocation, robotsNearMe);
+
                 if (!a && b && c){
                     buildGardenerHere = thisLocation;
                     System.out.println("You can build a gardener at: " + buildGardenerHere + "\r\n");
@@ -553,121 +626,90 @@ public strictfp class RobotPlayer {
                     missionOrders = rc.readBroadcast(1);
                     myTeam = rc.getTeam();
                     myOrders = rc.readBroadcast(myBroadcastChannel);
+                    howManyLumberjacksWeWant = rc.readBroadcast(GARDENER_ORDERS_CHANNEL);
                     System.out.println("My Broadcast Channel is: " + myBroadcastChannel + "\r\n");
                     System.out.println("My orders are: " + myOrders + "\r\n");
                     dir = randomDirection();
-                    if (myOrders == 002 && rc.canBuildRobot(RobotType.LUMBERJACK, dir)) {
-                        rc.buildRobot(RobotType.LUMBERJACK, dir);
-                        System.out.println("I built a lumberjack!" + "\r\n");
-                        robotsNearMe = rc.senseNearbyRobots();
-                        robotJustBuilt = rc.senseRobotAtLocation(rc.getLocation().add(dir, 2));
-                        int z = robotJustBuilt.getID()/100;
-                        int x = robotJustBuilt.getID() % 100;
-                        currentLumberjackID = z + x;
-                        System.out.println("Current lumberjack ID: " + currentLumberjackID + "\r\n");
-                        rc.broadcast(currentLumberjackID, 002);
-                        System.out.println("I assigned the lumberjack the following broadcast ID: " + currentLumberjackID + "\r\n");
-                        System.out.println("I assigned the lumberjack the following orders: " + 002 + "\r\n");
+                    if (myOrders == 002) {
+                        buildSoldierHere(dir, 001);
                         firstTurn++;
                     }
                     if (myOrders == 001) {
                         firstTurn++;
-                        if (rc.canPlantTree(plant_direction)) {
-                            rc.plantTree(plant_direction);
-                            System.out.println("I planted a tree!" + "\r\n");
-                        } else {
-                            System.out.println("I couldn't plant a tree. Currently facing: " + plant_direction + "\r\n");
-                        }
-
-                        plant_iteration = plant_iteration + (PI / 3);
-                        plant_direction = new Direction(plant_iteration);
-
+                        letsTryPlantingTrees(plant_direction);
                         waterInDirection(treeDirectionToWater());
                     }
                     if (myOrders == 003) {
                         dir = findBuildSpace(1.01);
-                        if (rc.canBuildRobot(RobotType.LUMBERJACK, dir)) {
-                            rc.buildRobot(RobotType.LUMBERJACK, dir);
-                            System.out.println("I built a lumberjack!" + "\r\n");
-                            robotsNearMe = rc.senseNearbyRobots();
-                            robotJustBuilt = rc.senseRobotAtLocation(rc.getLocation().add(dir, 2));
-                            int z = robotJustBuilt.getID()/100;
-                            int x = robotJustBuilt.getID() % 100;
-                            currentLumberjackID = z + x;
-                            System.out.println("Current lumberjack ID: " + currentLumberjackID + "\r\n");
-                            rc.broadcast(currentLumberjackID, 003);
-                            System.out.println("I assigned the lumberjack the following broadcast ID: " + currentLumberjackID + "\r\n");
-                            System.out.println("I assigned the lumberjack the following orders: " + 003 + "\r\n");
-                            firstTurn++;
-                        }
-
+                        buildSoldierHere(dir, 001);
+                        firstTurn++;
+                    }
+                    if (myOrders == 004) {
+                        dir = findBuildSpace(1.01);
+                        buildSoldierHere(dir, 004);
+                        firstTurn++;
                     }
                 }
-
-                //TODO Movement
-                //TODO Build
-
-                if (firstTurn != 0) {
+                else if (firstTurn != 0) {
                     System.out.println("My orders are: " + myOrders + "\r\n");
-                    myTrees = rc.senseNearbyTrees(1, myTeam);
+                    myTrees = rc.senseNearbyTrees(2, myTeam);
+                    lumberjackCount = rc.readBroadcast(GARDENER_BROADCAST_CHANNEL);
+                    System.out.println("Lumberjack count is: " + lumberjackCount + "\r\n");
+                    myOrders = rc.readBroadcast(myBroadcastChannel);
+                    if (lumberjackCount >= howManyLumberjacksWeWant){
+                        rc.broadcast(myBroadcastChannel, 003);
+                        myOrders = 000;
+                    }
                     if (myOrders == 000) {
-                        if (rc.canPlantTree(plant_direction)) {
-                            rc.plantTree(plant_direction);
-                            System.out.println("I planted a tree!" + "\r\n");
-                        } else {
-                            System.out.println("I couldn't plant a tree. Currently facing: " + plant_direction + "\r\n");
-                        }
-
-                        plant_iteration = plant_iteration + (PI / 3);
-                        plant_direction = new Direction(plant_iteration);
-
+                        letsTryPlantingTrees(plant_direction);
                         waterInDirection(treeDirectionToWater());
                     }
 
-                    if (myOrders == 001) {
-                        if (rc.canPlantTree(plant_direction)) {
-                            rc.plantTree(plant_direction);
-                            System.out.println("I planted a tree!" + "\r\n");
-                        } else {
-                            System.out.println("I couldn't plant a tree. Currently facing: " + plant_direction + "\r\n");
-                        }
-
-                        plant_iteration = plant_iteration + (PI / 3);
-                        plant_direction = new Direction(plant_iteration);
-
+                    else if (myOrders == 001) {
+                        letsTryPlantingTrees(plant_direction);
                         waterInDirection(treeDirectionToWater());
                     }
-
-
-                    if (myOrders == 002){
+                    else if (myOrders == 002 && myTrees.length < 3){
+                        System.out.println("Number of trees planted: " + myTrees.length + "\r\n");
                         dir = findBuildSpace(1.01);
-                        if (rc.canBuildRobot(RobotType.LUMBERJACK, dir)){
-                            rc.buildRobot(RobotType.LUMBERJACK, dir);
-                            System.out.println("I built a lumberjack!" + "\r\n");
-                            robotsNearMe = rc.senseNearbyRobots();
-                            robotJustBuilt = rc.senseRobotAtLocation(rc.getLocation().add(dir, 2));
-                            int z = robotJustBuilt.getID()/100;
-                            int x = robotJustBuilt.getID() % 100;
-                            currentLumberjackID = z + x;
-                            System.out.println("Current lumberjack ID: " + currentLumberjackID + "\r\n");
-                            rc.broadcast(currentLumberjackID, 002);
-                            System.out.println("I assigned the lumberjack the following broadcast ID: " + currentLumberjackID + "\r\n");
-                            System.out.println("I assigned the lumberjack the following orders: " + 002 + "\r\n");
-                        }
-                        else {
-                            if (rc.canPlantTree(plant_direction)) {
-                                rc.plantTree(plant_direction);
-                                System.out.println("I planted a tree!" + "\r\n");
-                            } else {
-                                System.out.println("I couldn't plant a tree. Currently facing: " + plant_direction + "\r\n");
-                            }
+                        buildLumberjackHere(dir, myOrders);
 
-                            plant_iteration = plant_iteration + (PI / 3);
-                            plant_direction = new Direction(plant_iteration);
-
-                            waterInDirection(treeDirectionToWater());
-
-                        }
+                        letsTryPlantingTrees(plant_direction);
+                        waterInDirection(treeDirectionToWater());
+                    }
+                    else if (myOrders == 002 && myTrees.length >= 3){
+                        System.out.println("Number of trees planted: " + myTrees.length + "\r\n");
+                        System.out.println("I shouldn't be building trees!" + "\r\n");
+                        dir = findBuildSpace(1.01);
+                        buildLumberjackHere(dir, myOrders);
+                        waterInDirection(treeDirectionToWater());
+                    }
+                    else if (myOrders == 003 && myTrees.length < 3){
+                        System.out.println("Number of trees planted: " + myTrees.length + "\r\n");
+                        dir = findBuildSpace(1.01);
+                        buildLumberjackHere(dir, myOrders);
+                        letsTryPlantingTrees(plant_direction);
+                        waterInDirection(treeDirectionToWater());
+                    }
+                    else if (myOrders == 003 && myTrees.length >= 3){
+                        System.out.println("Number of trees planted: " + myTrees.length + "\r\n");
+                        System.out.println("I shouldn't be building trees!" + "\r\n");
+                        dir = findBuildSpace(1.01);
+                        buildLumberjackHere(dir, myOrders);
+                        waterInDirection(treeDirectionToWater());
+                    }
+                    else if (myOrders == 4 && myTrees.length < 2){
+                        System.out.println("Number of trees planted: " + myTrees.length + "\r\n");
+                        System.out.println("I shouldn't be building trees!" + "\r\n");
+                        buildSoldierHere(dir, 004);
+                        letsTryPlantingTrees(plant_direction);
+                        waterInDirection(treeDirectionToWater());
+                    }
+                    else if (myOrders == 4 && myTrees.length >= 2){
+                        System.out.println("Number of trees planted: " + myTrees.length + "\r\n");
+                        System.out.println("I shouldn't be building trees!" + "\r\n");
+                        buildSoldierHere(dir, 004);
+                        waterInDirection(treeDirectionToWater());
                     }
                 }
                 Clock.yield();
@@ -678,30 +720,82 @@ public strictfp class RobotPlayer {
         }
     }
 
-//    private static int findBroadcastChannel(int channel){
-//        int x = channel;
-//        int y;
-//        boolean a = true;
-//        while(a){
-//            try {
-//                y = rc.readBroadcast(x);
-//                if (y == 0){
-//                    System.out.println("The broadcast channel is: " + x);
-//                    return x;
-//                }
-//                else {
-//                    x = x++;
-//                }
-//
-//
-//            } catch (Exception e) {
-//                System.out.println("This isn't working!");
-//                e.printStackTrace();
-//            }
-//        }
-//        System.out.println("Bad return: " + x);
-//        return x;
-//    }
+    private static void buildLumberjackHere(Direction myDir, int orders) {
+        while (rc.canBuildRobot(RobotType.LUMBERJACK, myDir)) {
+            try {
+                rc.buildRobot(RobotType.LUMBERJACK, myDir);
+                System.out.println("I built a lumberjack!" + "\r\n");
+                robotsNearMe = rc.senseNearbyRobots();
+                robotJustBuilt = rc.senseRobotAtLocation(rc.getLocation().add(myDir, 2));
+                int z = robotJustBuilt.getID() / 100;
+                int x = robotJustBuilt.getID() % 100;
+                currentLumberjackID = z + x;
+                System.out.println("Current lumberjack ID: " + currentLumberjackID + "\r\n");
+                rc.broadcast(currentLumberjackID, orders);
+                System.out.println("I assigned the lumberjack the following broadcast ID: " + currentLumberjackID + "\r\n");
+                System.out.println("I assigned the lumberjack the following orders: " + orders + "\r\n");
+                updateLumberjackCount();
+                break;
+            } catch (Exception e) {
+                System.out.println("Gardener Exception");
+                e.printStackTrace();
+            }
+        }
+    }
+
+    private static void buildSoldierHere(Direction myDir, int orders) {
+        System.out.println("Trying to build a Soldier!" + "\r\n");
+        for (int i = 0; i < 11; i++){
+            myDir = randomDirection();
+            if (rc.canBuildRobot(RobotType.SOLDIER, myDir)){
+                System.out.println("Trying a new direction at: " + myDir + "\r\n");
+                break;
+            }
+        }
+        while (rc.canBuildRobot(RobotType.SOLDIER, myDir)){
+            try {
+                rc.buildRobot(RobotType.SOLDIER, myDir);
+                System.out.println("I built a soldier!" + "\r\n");
+                robotsNearMe = rc.senseNearbyRobots();
+                robotJustBuilt = rc.senseRobotAtLocation(rc.getLocation().add(myDir, 2));
+                int z = robotJustBuilt.getID() / 100;
+                int x = robotJustBuilt.getID() % 100;
+                currentLumberjackID = z + x;
+                System.out.println("Current soldier ID: " + currentLumberjackID + "\r\n");
+                rc.broadcast(currentLumberjackID, orders);
+                System.out.println("I assigned the soldier the following broadcast ID: " + currentLumberjackID + "\r\n");
+                System.out.println("I assigned the soldier the following orders: " + orders + "\r\n");
+                break;
+            } catch (Exception e) {
+                System.out.println("Gardener Exception");
+                e.printStackTrace();
+            }
+        }
+    }
+
+    private static void letsTryPlantingTrees(Direction myDir){
+        System.out.println("Trying to build a tree!" + "\r\n");
+        while(true){
+                try{
+                    changePlantingDirection();
+                    if (rc.canPlantTree(myDir)) {
+                        rc.plantTree(myDir);
+                        System.out.println("I planted a tree!" + "\r\n");
+                        break;
+                    } else {
+                        break;
+                    }
+                } catch (Exception e) {
+                    System.out.println("Gardener Exception");
+                    e.printStackTrace();
+                }
+            }
+    }
+
+    private static void changePlantingDirection(){
+        plant_iteration = plant_iteration + (PI / 3);
+        plant_direction = new Direction(plant_iteration);
+    }
 
     private static Direction treeDirectionToWater(){
         myTrees = rc.senseNearbyTrees(2, myTeam);
@@ -751,7 +845,8 @@ public strictfp class RobotPlayer {
 
     static void runSoldier() throws GameActionException {
         System.out.println("I'm an soldier!");
-        Team enemy = rc.getTeam().opponent();
+        enemyTeam = rc.getTeam().opponent();
+
 
         // The code you want your robot to perform every round should be in this loop
         while (true) {
@@ -759,36 +854,194 @@ public strictfp class RobotPlayer {
             // Try/catch blocks stop unhandled exceptions, which cause your robot to explode
             try {
 
-                //TODO Bullet Sense
-                //TODO Receive Orders
-                //TODO Movement
-                //TODO Attack
-                //TODO yield
+                if (firstTurn == 0) {
+                    firstTurn++;
+                    int t = rc.getID()/100;
+                    int r = rc.getID() % 100;
+                    myBroadcastChannel = t + r;
+                    missionOrders = rc.readBroadcast(1);
+                    myTeam = rc.getTeam();
+                    myOrders = rc.readBroadcast(myBroadcastChannel);
+                    System.out.println("My Broadcast Channel is: " + myBroadcastChannel + "\r\n");
+                    System.out.println("My orders are: " + myOrders + "\r\n");
+                    dir = randomDirection();
+                    enemyRobotsNearMe = rc.senseNearbyRobots(-1, enemyTeam);
+                    distanceToEnemy = howFartoEnemy();
+                    soldierStartLocation = rc.getLocation();
 
-                MapLocation myLocation = rc.getLocation();
+                    if (myOrders == 000){
+                        tryMove(dir);
+                        if (isEnemyNearby(enemyRobotsNearMe)){
+                            MapLocation aimSpot = enemyRobotsNearMe[0].getLocation();
+                            if (isLineOfSightClear(rc.getLocation(), aimSpot)){
+                                fireAtEnemy(aimSpot);
+                            }
+                        }
+                    }
+                    if (myOrders == 001) {
+                        tryMove(dir);
+                        if (isEnemyNearby(enemyRobotsNearMe)){
+                            MapLocation aimSpot = enemyRobotsNearMe[0].getLocation();
+                            if (isLineOfSightClear(rc.getLocation(), aimSpot)){
+                                fireAtEnemy(aimSpot);
+                            }
+                        }
+                    }
+                    if (myOrders == 002) {
+                        tryMove(dir);
+                        if (isEnemyNearby(enemyRobotsNearMe)){
+                            MapLocation aimSpot = enemyRobotsNearMe[0].getLocation();
+                            if (isLineOfSightClear(rc.getLocation(), aimSpot)){
+                                fireAtEnemy(aimSpot);
+                            }
+                        }
+                    }
+                    if (myOrders == 003) {
+                        tryMove(dir);
+                        if (isEnemyNearby(enemyRobotsNearMe)){
+                            MapLocation aimSpot = enemyRobotsNearMe[0].getLocation();
+                            if (isLineOfSightClear(rc.getLocation(), aimSpot)){
+                                fireAtEnemy(aimSpot);
+                            }
+                        }
+                    }
+                    if (myOrders == 004) {
+                        initialEnemyArchonLocation = rc.getInitialArchonLocations(enemyTeam);
+                        dir = rc.getLocation().directionTo(initialEnemyArchonLocation[0]);
+                        tryMove(dir);
+                        if (isEnemyNearby(enemyRobotsNearMe)){
+                            MapLocation aimSpot = enemyRobotsNearMe[0].getLocation();
+                            if (isLineOfSightClear(rc.getLocation(), aimSpot)){
+                                fireAtEnemy(aimSpot);
+                            }
+                        }
+                    }
 
-                // See if there are any nearby enemy robots
-                RobotInfo[] robots = rc.senseNearbyRobots(-1, enemy);
+                }
 
-                // If there are some...
-                if (robots.length > 0) {
-                    // And we have enough bullets, and haven't attacked yet this turn...
-                    if (rc.canFireSingleShot()) {
-                        // ...Then fire a bullet in the direction of the enemy.
-                        rc.fireSingleShot(rc.getLocation().directionTo(robots[0].location));
+                else if (firstTurn != 0){
+                    System.out.println("My orders are: " + myOrders + "\r\n");
+                    missionOrders = rc.readBroadcast(1);
+                    myOrders = rc.readBroadcast(myBroadcastChannel);
+                    if (myOrders == 000){
+                        tryMove(dir);
+                        if (isEnemyNearby(enemyRobotsNearMe)){
+                            MapLocation aimSpot = enemyRobotsNearMe[0].getLocation();
+                            if (isLineOfSightClear(rc.getLocation(), aimSpot)){
+                                fireAtEnemy(aimSpot);
+                            }
+                        }
+                    }
+                    if (myOrders == 001) {
+                        dir = randomDirection();
+                        if (rc.getLocation().distanceTo(soldierStartLocation) < 10){
+                            tryMove(dir);
+                        }
+                        else {
+                            dir = rc.getLocation().directionTo(soldierStartLocation);
+                            tryMove(dir);
+                        }
+
+                        if (isEnemyNearby(enemyRobotsNearMe)){
+                            MapLocation aimSpot = enemyRobotsNearMe[0].getLocation();
+                            if (isLineOfSightClear(rc.getLocation(), aimSpot)){
+                                fireAtEnemy(aimSpot);
+                            }
+                        }
+                    }
+                    if (myOrders == 002) {
+                        tryMove(dir);
+                        if (isEnemyNearby(enemyRobotsNearMe)){
+                            MapLocation aimSpot = enemyRobotsNearMe[0].getLocation();
+                            if (isLineOfSightClear(rc.getLocation(), aimSpot)){
+                                fireAtEnemy(aimSpot);
+                            }
+                        }
+                    }
+                    if (myOrders == 003) {
+                        tryMove(dir);
+                        if (isEnemyNearby(enemyRobotsNearMe)){
+                            MapLocation aimSpot = enemyRobotsNearMe[0].getLocation();
+                            if (isLineOfSightClear(rc.getLocation(), aimSpot)){
+                                fireAtEnemy(aimSpot);
+                            }
+                        }
+                    }
+                    if (myOrders == 004) {
+                        initialEnemyArchonLocation = rc.getInitialArchonLocations(enemyTeam);
+                        dir = rc.getLocation().directionTo(initialEnemyArchonLocation[0]);
+                        tryMove(dir);
+                        if (isEnemyNearby(enemyRobotsNearMe)){
+                            MapLocation aimSpot = enemyRobotsNearMe[0].getLocation();
+                            if (isLineOfSightClear(rc.getLocation(), aimSpot)){
+                                fireAtEnemy(aimSpot);
+                            }
+                        }
                     }
                 }
 
-                // Move randomly
-                tryMove(randomDirection());
-
-                // Clock.yield() makes the robot wait until the next turn, then it will perform this loop again
                 Clock.yield();
 
             } catch (Exception e) {
                 System.out.println("Soldier Exception");
                 e.printStackTrace();
             }
+        }
+    }
+
+    private static boolean isEnemyNearby(RobotInfo[] robots){
+        if (robots.length > 0){
+            if (robots[0].getLocation().distanceTo(rc.getLocation()) < 4){
+                return true;
+            }
+            else {
+                return false;
+            }
+        }
+        else {
+            return false;
+        }
+    }
+
+    private static boolean isLineOfSightClear(MapLocation myLocation, MapLocation enemyLocation) {
+        System.out.println("Checking Line of Sight!\r\n");
+        float distance = myLocation.distanceTo(enemyLocation);
+        Direction dir = myLocation.directionTo(enemyLocation);
+        boolean nothingInTheWay;
+
+        while (true) {
+            try {
+                for (float i = 0; i < distance; i++) {
+                    nothingInTheWay = rc.isCircleOccupied(myLocation.add(dir, distance), 1);
+                    if (!nothingInTheWay){
+                        System.out.println("Found something in the way at: " + myLocation.add(dir, distance) + "\r\n");
+                        return false;
+                    }
+                    else {
+                        System.out.println("Nothing in the way!\r\n");
+                        return true;
+                    }
+                }
+
+            } catch (Exception e) {
+                System.out.println("Soldier Exception");
+                e.printStackTrace();
+            }
+        }
+    }
+
+    private static void fireAtEnemy(MapLocation aimLoc){
+        if (rc.canFireSingleShot()){
+            while(true){
+                try{
+                    rc.fireSingleShot(rc.getLocation().directionTo(aimLoc));
+                    break;
+                } catch (Exception e) {
+                    System.out.println("Soldier Exception");
+                    e.printStackTrace();
+                }
+            }
+
         }
     }
 
@@ -811,17 +1064,10 @@ public strictfp class RobotPlayer {
 
     static void runLumberjack() throws GameActionException {
         System.out.println("I'm a lumberjack!");
-
-
-
-        // The code you want your robot to perform every round should be in this loop
         while (true) {
-
-            // Try/catch blocks stop unhandled exceptions, which cause your robot to explode
             try {
                 if (firstTurn == 0) {
                     firstTurn++;
-                    System.out.println("First Turn is: " + firstTurn + "\r\n");
                     enemyTeam = rc.getTeam().opponent();
                     initialEnemyArchonLocation = rc.getInitialArchonLocations(enemyTeam);
                     lumberjackStartLoc = rc.getLocation();
@@ -833,136 +1079,56 @@ public strictfp class RobotPlayer {
                     myOrders = rc.readBroadcast(myBroadcastChannel);
                     System.out.println("My Broadcast Channel is: " + myBroadcastChannel + "\r\n");
                     System.out.println("My orders are: " + myOrders + "\r\n");
-                    if (myOrders == 001) {
-                        broadcastData = rc.readBroadcast(22);
-                        broadcastParse = Integer.toString(broadcastData);
-                        String a = broadcastParse.substring(0, 3);
-                        String b = broadcastParse.substring(3, 6);
-                        treeLocationX = Float.parseFloat(a);
-                        treeLocationY = Float.parseFloat(b);
-                        nearestTree = new MapLocation(treeLocationX, treeLocationY);
-                        System.out.println("The nearest tree is at: " + nearestTree + "\r\n");
-                        dir = nearestTree.directionTo(rc.getLocation());
-                        System.out.println("I want to move this way: " + dir + "\r\n");
-                        tryMove(dir);
-                        if (rc.canShake(nearestTree)){
-                            rc.shake(nearestTree);
-                        }
-                        if (rc.canChop(nearestTree)){
-                            rc.chop(nearestTree);
-                        }
+                    dir = randomDirection();
+                    if (myOrders == 000) {
+                        rc.broadcast(myBroadcastChannel, 002);
+                        myOrders = 002;
                     }
                     if (myOrders == 002) {
-                        treesNearMe = rc.senseNearbyTrees(1, Team.NEUTRAL);
-                        if (treesNearMe.length == 0){
-                            treesNearMe = rc.senseNearbyTrees(2, Team.NEUTRAL);
-                            if (treesNearMe.length == 0){
-                                treesNearMe = rc.senseNearbyTrees(3, Team.NEUTRAL);
-                                if (treesNearMe.length == 0){
-                                    treesNearMe = rc.senseNearbyTrees(4, Team.NEUTRAL);
-                                    if (treesNearMe.length == 0){
-                                        treesNearMe = rc.senseNearbyTrees(5, Team.NEUTRAL);
-                                        if (treesNearMe.length == 0){
-                                            treesNearMe = rc.senseNearbyTrees(6, Team.NEUTRAL);
-                                            if (treesNearMe.length == 0){
-                                                treesNearMe = rc.senseNearbyTrees(7, Team.NEUTRAL);
-                                                if (treesNearMe.length == 0){
-                                                    System.out.println("Not sensing any trees!\r\n");
-                                                    dir = rc.getLocation().directionTo(initialEnemyArchonLocation[0]);
-                                                    tryMove(dir);
-                                                }
-                                            }
-                                        }
-                                    }
-                                }
-                            }
-                        }
-                        if (treesNearMe.length > 0){
+                        if (senseTreesForChopping()){
                             System.out.println("Nearest tree at: " + treesNearMe[0].getLocation() + "\r\n");
                             dir = rc.getLocation().directionTo(treesNearMe[0].getLocation());
                             nearestTree = treesNearMe[0].getLocation();
                             tryMove(dir);
-                            if (rc.canShake(nearestTree)){
-                                rc.shake(nearestTree);
-                            }
-                            if (rc.canChop(nearestTree)){
-                                rc.chop(nearestTree);
-                            }
+                            canShakeChopWillShakeChop(nearestTree);
                         }
-
-
+                        else {
+                            System.out.println("Not sensing any trees!\r\n");
+                            dir = rc.getLocation().directionTo(initialEnemyArchonLocation[0]);
+                            tryMove(dir);
+                            }
                     }
                     if (myOrders == 3){
                         lumberjackStartLoc = rc.getLocation();
-                        treesNearMe = rc.senseNearbyTrees(1, Team.NEUTRAL);
-
-                        if (treesNearMe.length == 0){
-                            treesNearMe = rc.senseNearbyTrees(2, Team.NEUTRAL);
-                            if (treesNearMe.length == 0){
-                                treesNearMe = rc.senseNearbyTrees(3, Team.NEUTRAL);
-                                if (treesNearMe.length == 0){
-                                    treesNearMe = rc.senseNearbyTrees(4, Team.NEUTRAL);
-                                    if (treesNearMe.length == 0){
-                                        treesNearMe = rc.senseNearbyTrees(5, Team.NEUTRAL);
-                                        if (treesNearMe.length == 0){
-                                            treesNearMe = rc.senseNearbyTrees(6, Team.NEUTRAL);
-                                            if (treesNearMe.length == 0){
-                                                treesNearMe = rc.senseNearbyTrees(7, Team.NEUTRAL);
-                                                if (treesNearMe.length == 0){
-                                                    dir = rc.getLocation().directionTo(initialEnemyArchonLocation[0]);
-                                                    System.out.println("Not sensing any trees!\r\n");
-                                                    tryMove(dir);
-                                                    myOrders = 2;
-                                                }
-                                            }
-                                        }
-                                    }
-                                }
-                            }
+                        if (senseTreesForChopping()){
+                            System.out.println("Nearest tree at: " + treesNearMe[0].getLocation() + "\r\n");
+                            dir = rc.getLocation().directionTo(treesNearMe[0].getLocation());
+                            nearestTree = treesNearMe[0].getLocation();
+                            tryMove(dir);
+                            canShakeChopWillShakeChop(nearestTree);
                         }
-                        dir = rc.getLocation().directionTo(treesNearMe[0].getLocation());
-                        nearestTree = treesNearMe[0].getLocation();
-                        tryMove(dir);
-                        if (rc.canShake(nearestTree)){
-                            rc.shake(nearestTree);
+                        else {
+                            dir = rc.getLocation().directionTo(initialEnemyArchonLocation[0]);
+                            System.out.println("Not sensing any trees!\r\n");
+                            tryMove(dir);
+                            myOrders = 2;
                         }
-                        if (rc.canChop(nearestTree)){
-                            rc.chop(nearestTree);
-                        }
-
                     }
                 }
-
 
                 else if (firstTurn != 0){
                     System.out.println("My Broadcast Channel is: " + myBroadcastChannel + "\r\n");
                     System.out.println("My orders are: " + myOrders + "\r\n");
+                    myOrders = rc.readBroadcast(myBroadcastChannel);
                     enemyNearby = false;
                     enemyRobots = rc.senseNearbyRobots(7, enemyTeam);
                     if (enemyRobots.length > 0){
                         dir = rc.getLocation().directionTo(enemyRobots[0].getLocation());
                         enemyNearby = true;
                     }
-                    if (myOrders == 001 && !enemyNearby) {
-                        broadcastData = rc.readBroadcast(22);
-                        broadcastParse = Integer.toString(broadcastData);
-                        String a = broadcastParse.substring(0, 3);
-                        String b = broadcastParse.substring(3, 6);
-                        treeLocationX = Float.parseFloat(a);
-                        treeLocationY = Float.parseFloat(b);
-                        nearestTree = new MapLocation(treeLocationX, treeLocationY);
-                        System.out.println("The nearest tree is at: " + nearestTree + "\r\n");
-                        dir = rc.getLocation().directionTo(nearestTree);
-                        System.out.println("I want to move this way: " + dir + "\r\n");
-                        tryMove(dir);
-                        if (rc.canShake(nearestTree)){
-                            rc.shake(nearestTree);
-                            System.out.println("I'm shaking this tree!" + "\r\n");
-                        }
-                        if (rc.canChop(nearestTree)){
-                            rc.chop(nearestTree);
-                            System.out.println("I'm chopping this tree!" + "\r\n");
-                        }
+                    if (myOrders == 000 && !enemyNearby) {
+                        rc.broadcast(myBroadcastChannel, 002);
+                        myOrders = 002;
                     }
                     if (myOrders == 001 && enemyNearby){
                         tryMove(dir);
@@ -971,22 +1137,15 @@ public strictfp class RobotPlayer {
                         }
                     }
                     if (myOrders == 002 && !enemyNearby) {
-                        treesNearMe = rc.senseNearbyTrees(7, Team.NEUTRAL);
-                        if (treesNearMe.length > 0){
+                        if (senseTreesForChopping()){
                             dir = rc.getLocation().directionTo(treesNearMe[0].getLocation());
                             tryMove(dir);
                             System.out.println("I want to move this way: " + dir +  "\r\n");
                             nearestTree = treesNearMe[0].getLocation();
-                            if (rc.canShake(nearestTree)){
-                                rc.shake(nearestTree);
-                                System.out.println("I'm shaking this tree!" + "\r\n");
-                            }
-                            if (rc.canChop(nearestTree)){
-                                rc.chop(nearestTree);
-                                System.out.println("I'm chopping this tree!" + "\r\n");
-                            }
+                            canShakeChopWillShakeChop(nearestTree);
                         }
                         else {
+                            System.out.println("I want to move towards the enemy!" + "\r\n");
                             dir = rc.getLocation().directionTo(initialEnemyArchonLocation[0]);
                             tryMove(dir);
                         }
@@ -1000,39 +1159,17 @@ public strictfp class RobotPlayer {
                     }
 
                     if (myOrders == 3 && lumberjackGoHome == 0){
-                        treesNearMe = rc.senseNearbyTrees(1, Team.NEUTRAL);
-
-                        if (treesNearMe.length == 0){
-                            treesNearMe = rc.senseNearbyTrees(2, Team.NEUTRAL);
-                            if (treesNearMe.length == 0){
-                                treesNearMe = rc.senseNearbyTrees(3, Team.NEUTRAL);
-                                if (treesNearMe.length == 0){
-                                    treesNearMe = rc.senseNearbyTrees(4, Team.NEUTRAL);
-                                    if (treesNearMe.length == 0){
-                                        treesNearMe = rc.senseNearbyTrees(5, Team.NEUTRAL);
-                                        if (treesNearMe.length == 0){
-                                            treesNearMe = rc.senseNearbyTrees(6, Team.NEUTRAL);
-                                            if (treesNearMe.length == 0){
-                                                treesNearMe = rc.senseNearbyTrees(7, Team.NEUTRAL);
-                                                if (treesNearMe.length == 0){
-                                                    dir = rc.getLocation().directionTo(lumberjackStartLoc);
-                                                    tryMove(dir);
-                                                    lumberjackGoHome++;
-                                                }
-                                            }
-                                        }
-                                    }
-                                }
-                            }
+                        if (senseTreesForChopping()){
+                            dir = rc.getLocation().directionTo(treesNearMe[0].getLocation());
+                            tryMove(dir);
+                            System.out.println("I want to move this way: " + dir +  "\r\n");
+                            nearestTree = treesNearMe[0].getLocation();
+                            canShakeChopWillShakeChop(nearestTree);
                         }
-                        dir = rc.getLocation().directionTo(treesNearMe[0].getLocation());
-                        nearestTree = treesNearMe[0].getLocation();
-                        tryMove(dir);
-                        if (rc.canShake(nearestTree)){
-                            rc.shake(nearestTree);
-                        }
-                        if (rc.canChop(nearestTree)){
-                            rc.chop(nearestTree);
+                        else {
+                            dir = rc.getLocation().directionTo(lumberjackStartLoc);
+                            tryMove(dir);
+                            lumberjackGoHome++;
                         }
                     }
                     else if (myOrders == 3 && lumberjackGoHome < 7){
@@ -1044,43 +1181,113 @@ public strictfp class RobotPlayer {
 
                 Clock.yield();
 
-
-                //TODO Bullet Sense
-                //TODO Receive Orders
-                //TODO Movement
-                //TODO Attack
-                //TODO yield
-
-
-                // See if there are any enemy robots within striking range (distance 1 from lumberjack's radius)
-                //RobotInfo[] robots = rc.senseNearbyRobots(RobotType.LUMBERJACK.bodyRadius+GameConstants.LUMBERJACK_STRIKE_RADIUS, enemy);
-
-                //if(robots.length > 0 && !rc.hasAttacked()) {
-                // Use strike() to hit all nearby robots!
-                //    rc.strike();
-                //} else {
-                // No close robots, so search for robots within sight radius
-                //    robots = rc.senseNearbyRobots(-1,enemy);
-                // If there is a robot, move towards it
-                //    if(robots.length > 0) {
-//                        MapLocation myLocation = rc.getLocation();
-//                        MapLocation enemyLocation = robots[0].getLocation();
-//                        Direction toEnemy = myLocation.directionTo(enemyLocation);
-//
-//                        tryMove(toEnemy);
-//                    } else {
-//                        // Move Randomly
-//                        tryMove(randomDirection());
-//                    }
-//                }
-//
-//                // Clock.yield() makes the robot wait until the next turn, then it will perform this loop again
-//                Clock.yield();
-//
             } catch (Exception e) {
                 System.out.println("Lumberjack Exception");
                 e.printStackTrace();
             }
+        }
+    }
+
+    private static boolean senseTreesForChopping(){
+        while(true){
+            try{
+                treesNearMe = rc.senseNearbyTrees(1, Team.NEUTRAL);
+                if (treesNearMe.length == 0){
+                    treesNearMe = rc.senseNearbyTrees(2, Team.NEUTRAL);
+                    if (treesNearMe.length == 0){
+                        treesNearMe = rc.senseNearbyTrees(3, Team.NEUTRAL);
+                        if (treesNearMe.length == 0){
+                            treesNearMe = rc.senseNearbyTrees(4, Team.NEUTRAL);
+                            if (treesNearMe.length == 0){
+                                treesNearMe = rc.senseNearbyTrees(5, Team.NEUTRAL);
+                                if (treesNearMe.length == 0){
+                                    treesNearMe = rc.senseNearbyTrees(6, Team.NEUTRAL);
+                                    if (treesNearMe.length == 0){
+                                        treesNearMe = rc.senseNearbyTrees(7, Team.NEUTRAL);
+                                        if (treesNearMe.length == 0){
+                                            System.out.println("No trees for chopping!" + "\r\n");
+                                            return false;
+                                        }
+                                        else {
+                                            System.out.println("Tree within: " + treesNearMe[0].getLocation().distanceTo(rc.getLocation()) + "\r\n");
+                                            return true;
+                                        }
+                                    }
+                                    else {
+                                        System.out.println("Tree within: " + treesNearMe[0].getLocation().distanceTo(rc.getLocation()) + "\r\n");
+                                        return true;
+                                    }
+                                }
+                                else {
+                                    System.out.println("Tree within: " + treesNearMe[0].getLocation().distanceTo(rc.getLocation()) + "\r\n");
+                                    return true;
+                                }
+                            }
+                            else {
+                                System.out.println("Tree within: " + treesNearMe[0].getLocation().distanceTo(rc.getLocation()) + "\r\n");
+                                return true;
+                            }
+                        }
+                        else {
+                            System.out.println("Tree within: " + treesNearMe[0].getLocation().distanceTo(rc.getLocation()) + "\r\n");
+                            return true;
+                        }
+                    }
+                    else {
+                        System.out.println("Tree within: " + treesNearMe[0].getLocation().distanceTo(rc.getLocation()) + "\r\n");
+                        return true;
+                    }
+                }
+                else {
+                    System.out.println("Tree within: " + treesNearMe[0].getLocation().distanceTo(rc.getLocation()) + "\r\n");
+                    return true;
+                }
+            } catch (Exception e) {
+                System.out.println("Lumberjack Exception");
+                e.printStackTrace();
+            }
+        }
+    }
+
+    private static void updateLumberjackCount(){
+        while(true) {
+            try {
+                int x = rc.readBroadcast(GARDENER_BROADCAST_CHANNEL);
+                x++;
+                rc.broadcast(GARDENER_BROADCAST_CHANNEL, x);
+                break;
+            } catch (Exception e) {
+                System.out.println("Gardener Exception");
+                e.printStackTrace();
+            }
+        }
+    }
+
+
+
+    private static void canShakeChopWillShakeChop(MapLocation treeLocation){
+        if (rc.canShake(treeLocation)){
+            while(true){
+                try {
+                    rc.shake(treeLocation);
+                    break;
+                }catch (Exception e) {
+                    System.out.println("Lumberjack Exception");
+                    e.printStackTrace();
+                }
+            }
+        }
+        if (rc.canChop(nearestTree)){
+            while(true){
+                try{
+                    rc.chop(nearestTree);
+                    break;
+                }catch (Exception e) {
+                    System.out.println("Lumberjack Exception");
+                    e.printStackTrace();
+                }
+            }
+
         }
     }
 
@@ -1101,7 +1308,7 @@ public strictfp class RobotPlayer {
      * @throws GameActionException
      */
     static boolean tryMove(Direction dir) throws GameActionException {
-        return tryMove(dir,20,3);
+        return tryMove(dir,30,4);
     }
 
     /**
