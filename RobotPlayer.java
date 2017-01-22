@@ -181,16 +181,17 @@ public strictfp class RobotPlayer {
                     spaceAvailable = howMuchSpace();
                     System.out.println("Space available: " + spaceAvailable + "\r\n");
 
-                    if (spaceAvailable >= 9){
+                    if (spaceAvailable >= 9 && distanceToEnemy >= 60){
                         archonBehavior = 1;
-                        howManyLumberjacksWeWant = 5;
+                        howManyLumberjacksWeWant = 3;
                         rc.broadcast(GARDENER_BUILD_LUMBERJACK_BROADCAST, howManyLumberjacksWeWant);
                         rc.broadcast(1, 001);
                         canBuildAllTrees = findSpaceFreeForTrees(rc.getLocation().add(randomDirection()));
                         if (canBuildAllTrees){
                             System.out.println("I can build all the trees!" + "\r\n");
                             if (atPlantLocation(2) && rc.canHireGardener(dir)){
-                                buildGardener(dir, 001);
+                                buildGardener(dir, 003);
+                                firstTurn++;
                             }
                             else if (atPlantLocation(2)){
                                 firstTurn++;
@@ -204,6 +205,10 @@ public strictfp class RobotPlayer {
                             firstTurn++;
                         }
                     }
+                    else if (spaceAvailable >= 9 && distanceToEnemy < 60){
+
+                    }
+
                     else if (spaceAvailable > 0 && distanceToEnemy < 40){
                         archonBehavior = 4;
                         rc.broadcast(1, 004);
@@ -263,7 +268,7 @@ public strictfp class RobotPlayer {
                         if (canBuildAllTrees && spaceAvailable < 9) {
                             System.out.println("I can build all the trees!" + "\r\n");
                             if (atPlantLocation(2) && rc.canHireGardener(dir)) {
-                                buildGardener(dir, 003);
+                                buildGardener(dir, 002);
                             } else if (atPlantLocation(2)) {
                                 System.out.println("Will wait here till I can plant!" + "\r\n");
                                 archonWaitingToPlant = 1;
@@ -279,7 +284,7 @@ public strictfp class RobotPlayer {
                         if (canBuildAllTrees && spaceAvailable >= 9) {
                             System.out.println("I can build all the trees!" + "\r\n");
                             if (atPlantLocation(2) && rc.canHireGardener(dir)) {
-                                buildGardener(dir, 002);
+                                buildGardener(dir, 003);
                             } else if (atPlantLocation(2)) {
                                 System.out.println("Will wait here till I can plant!" + "\r\n");
                                 archonWaitingToPlant = 1;
@@ -727,7 +732,7 @@ public strictfp class RobotPlayer {
                             tryMove(randomDirection());
                         }
                     }
-                    else if (myOrders == 003 && iPlanted < gardenerBuildLineDistance && noMoveLocation){
+                    else if (myOrders == 003 && iPlanted < 10 && noMoveLocation){
                         if (atPlantLocation(1) && rc.canPlantTree(rc.getLocation().directionTo(buildGardenerHere))){
                             letsTryPlantingTrees(rc.getLocation().directionTo(buildGardenerHere));
                             iPlanted++;
@@ -736,7 +741,7 @@ public strictfp class RobotPlayer {
                             tryMove(gardenerBuildLineDirection);
                             noMoveLocation = true;
                             waterInDirection(treeDirectionToWater());
-                            buildGardenerHere = nearestTree.add(gardenerBuildLineDirection, 4);
+                            buildGardenerHere = nearestTree.add(gardenerBuildLineDirection, 5);
                         }
                         else if (atPlantLocation(1)) {
 
@@ -745,27 +750,27 @@ public strictfp class RobotPlayer {
                             tryMove(gardenerBuildLineDirection);
                         }
                     }
-                    else if (myOrders == 003 && iPlanted >= gardenerBuildLineDistance && noMoveLocation){
+                    else if (myOrders == 003 && iPlanted >= 10 && noMoveLocation){
                         move = rc.getLocation().directionTo(gardenerBuiltFirstLineTree);
                         tryMove(move);
                         waterInDirection(treeDirectionToWater());
                     }
 
 
-                    else if (myOrders == 003 && myTrees.length < 3){
-                        System.out.println("Number of trees planted: " + myTrees.length + "\r\n");
-                        dir = findBuildSpace(1.01);
-                        buildLumberjackHere(dir, myOrders);
-                        letsTryPlantingTrees(plant_direction);
-                        waterInDirection(treeDirectionToWater());
-                    }
-                    else if (myOrders == 003 && myTrees.length >= 3){
-                        System.out.println("Number of trees planted: " + myTrees.length + "\r\n");
-                        System.out.println("I shouldn't be building trees!" + "\r\n");
-                        dir = findBuildSpace(1.01);
-                        buildLumberjackHere(dir, myOrders);
-                        waterInDirection(treeDirectionToWater());
-                    }
+//                    else if (myOrders == 003 && myTrees.length < 3){
+//                        System.out.println("Number of trees planted: " + myTrees.length + "\r\n");
+//                        dir = findBuildSpace(1.01);
+//                        buildLumberjackHere(dir, myOrders);
+//                        letsTryPlantingTrees(plant_direction);
+//                        waterInDirection(treeDirectionToWater());
+//                    }
+//                    else if (myOrders == 003 && myTrees.length >= 3){
+//                        System.out.println("Number of trees planted: " + myTrees.length + "\r\n");
+//                        System.out.println("I shouldn't be building trees!" + "\r\n");
+//                        dir = findBuildSpace(1.01);
+//                        buildLumberjackHere(dir, myOrders);
+//                        waterInDirection(treeDirectionToWater());
+//                    }
                     else if (myOrders == 4 && myTrees.length < 2){
                         System.out.println("Number of trees planted: " + myTrees.length + "\r\n");
                         System.out.println("I shouldn't be building trees!" + "\r\n");
@@ -910,16 +915,16 @@ public strictfp class RobotPlayer {
                 System.out.println("Build distance to the west: " + westDistance + "\r\n");
             int largest = Math.max(northDistance,Math.max(eastDistance,Math.max(southDistance,westDistance)));
             gardenerBuildLineDistance = largest;
-            if (northDistance > eastDistance && northDistance > westDistance && northDistance > southDistance){
+            if (northDistance >= eastDistance && northDistance >= westDistance && northDistance >= southDistance){
                 gardenerBuildLineDirection = Direction.getNorth();
             }
-            if (eastDistance > northDistance && eastDistance > westDistance && eastDistance > southDistance){
+            if (eastDistance >= northDistance && eastDistance >= westDistance && eastDistance >= southDistance){
                 gardenerBuildLineDirection = Direction.getEast();
             }
-            if (westDistance > eastDistance && westDistance > northDistance && westDistance > southDistance){
+            if (westDistance >= eastDistance && westDistance >= northDistance && westDistance >= southDistance){
                 gardenerBuildLineDirection = Direction.getWest();
             }
-            if (southDistance > eastDistance && southDistance > northDistance && southDistance > westDistance){
+            if (southDistance >= eastDistance && southDistance >= northDistance && southDistance >= westDistance){
                 gardenerBuildLineDirection = Direction.getSouth();
             }
                 System.out.println("Build distance: " + gardenerBuildLineDistance + "\r\n");
